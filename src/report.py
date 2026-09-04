@@ -30,22 +30,35 @@ def _method_summary(frame: pd.DataFrame, setting: str = "W1") -> str:
     return summary.to_markdown(index=False, floatfmt=".4f")
 
 
+def _bank_summary(frame: pd.DataFrame, setting: str = "W1") -> str:
+    selected = frame[(frame["window_setting"] == setting) & frame["bank_seed"].notna()]
+    subject_level = selected.groupby(
+        ["protocol", "ra_mode", "method", "bank_seed", "subject"], as_index=False
+    )["balanced_accuracy"].mean()
+    summary = subject_level.groupby(
+        ["protocol", "ra_mode", "method", "bank_seed"], as_index=False
+    )["balanced_accuracy"].mean()
+    return summary.to_markdown(index=False, floatfmt=".4f")
+
+
 def _interpretation(frame: pd.DataFrame, gates: dict) -> list[str]:
     lines: list[str] = []
-    p2_b5 = []
+    approximately_equal = []
     for key in ("gate_1a", "gate_1b", "gate_2_no_ra", "gate_2_subject_ra"):
         value = gates[key]["p2_vs_b5"].get("median_across_banks_mean_subject_delta")
-        if value is not None and np.isfinite(value):
-            p2_b5.append(float(value))
-    if p2_b5 and max(abs(value) for value in p2_b5) <= 0.010:
-        lines.append("- P2 is approximately equal to B5 at the declared 0.010 BA tolerance; moment pooling explains the apparent gain and higher quantiles are unnecessary.")
+        if value is not None and np.isfinite(value) and abs(float(value)) <= 0.010:
+            approximately_equal.append(gates[key]["name"])
+    if approximately_equal:
+        labels = ", ".join(approximately_equal)
+        lines.append(f"- P2 is approximately equal to B5 (absolute median-bank delta <= 0.010) for {labels}; at those stages moment pooling explains the result and higher quantiles are unnecessary.")
 
     w2 = frame[frame["window_setting"] == "W2"]
     ordered = w2[w2["method"] == "ordered_control"].groupby(["protocol", "ra_mode", "subject"])["balanced_accuracy"].mean()
     p2 = w2[w2["method"] == "P2"].groupby(["protocol", "ra_mode", "subject"])["balanced_accuracy"].median()
     paired = pd.concat({"ordered": ordered, "p2": p2}, axis=1).dropna()
     if len(paired) and float((paired["ordered"] - paired["p2"]).mean()) >= 0.010:
-        lines.append("- The ordered non-overlapping-window control clearly exceeds P2; temporal order is more useful than an exchangeable trial measure.")
+        delta = float((paired["ordered"] - paired["p2"]).mean())
+        lines.append(f"- The ordered non-overlapping-window control exceeds P2 by {delta:+.4f} mean BA in W2; temporal order is more useful than an exchangeable trial measure.")
     if not lines:
         lines.append("- Neither the declared moment-equivalence nor ordered-control interpretation trigger fired.")
     return lines
@@ -98,6 +111,10 @@ def write_report(
         "",
         "Every projection-bank row is a separate fixed-bank result. Medians across seeds 0–4 are robustness summaries, not prediction ensembles.",
         "",
+        "### W1 fixed-bank results reported separately",
+        "",
+        _bank_summary(frame, "W1"),
+        "",
         "## W2 sensitivity summary (non-gating)",
         "",
         _method_summary(frame, "W2"),
@@ -113,13 +130,14 @@ def write_report(
         "## Interpretation controls",
         "",
         *_interpretation(frame, gates),
+        f"- Final decision: P1 diagnostic {'passed' if gates['overall_p1_diagnostic_pass_requires_all_four_stages'] else 'failed'} and P2 {'passed' if gates['overall_p2_pass_requires_all_four_stages'] else 'failed'}; therefore the registered action is `{gates['final_case']}` (close trial-measure SPDSW/SQE when `close`).",
         "",
         "## Timing",
         "",
         f"- Covariance/log-cache time: `{timing['covariance_log_cache_time_seconds']:.6f} s`",
         f"- Subject-RA covariance/log time: `{timing['subject_ra_covariance_log_time_seconds']:.6f} s`",
         f"- Projection-feature precomputation time: `{timing['projection_feature_precomputation_time_seconds']:.6f} s`",
-        f"- Classifier/prototype fitting time: `{timing['classifier_or_prototype_fitting_time_seconds']:.6f} s`",
+        f"- Classifier/pooled-class-measure fitting time: `{timing['classifier_or_pooled_measure_fitting_time_seconds']:.6f} s`",
         f"- Total measured inference time: `{timing['inference_time_seconds']:.6f} s`",
         f"- Amortized measured inference time: `{timing['amortized_inference_seconds_per_trial']:.9f} s/trial`",
         "",
@@ -133,4 +151,3 @@ def write_report(
         "- No downstream neural-layer claim follows from this prerequisite experiment.",
     ]
     Path(path).write_text("\n".join(lines) + "\n")
-

@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import pyriemann
 import sklearn
+from joblib import Parallel, delayed, parallel_config
+from threadpoolctl import threadpool_limits
 
 from src.data import ESTIMATOR_NAME, WINDOWS, build_covariance_log_cache, load_cache, validate_cache
 from src.diagnostics import gate0_diagnostics
@@ -30,6 +32,7 @@ from src.evaluation import (
     p1_pooled_class_measure,
 )
 from src.gates import evaluate_all_gates
+from src.output_audit import audit_outputs
 from src.projections import BANK_SEEDS, N_DIRECTIONS, load_projection_cache, precompute_projection_cache
 from src.protocols import assert_trial_disjoint, balanced_source_indices, make_splits
 from src.ra import build_subject_ra_cache, load_subject_ra_arrays
@@ -62,6 +65,13 @@ def _row(split, setting: str, method: str, aggregation: str, prediction: Predict
         "n_test_trials": int(len(y_test)),
         "transductive_calibration": split.ra_mode == "subject_ra",
     }
+
+
+def _run_filename(split, setting: str) -> str:
+    return (
+        f"{split.protocol}_{split.ra_mode}_sub{split.subject}_"
+        f"train{split.session_train}_test{split.session_test}_fold{split.fold_id}_{setting}.csv"
+    )
 
 
 def _run_one(split, setting, arrays, labels, subjects, projection_root) -> list[dict]:
@@ -109,10 +119,33 @@ def _run_one(split, setting, arrays, labels, subjects, projection_root) -> list[
             np.asarray(projections[p1_train]), np.asarray(labels[p1_train]), test_projection
         )
         rows.append(_row(split, setting, "P1", "pooled_class_measure", p1, y_test, bank_seed=seed, n_train=len(p1_train)))
-        # A paired copy of the same B2 prediction is used only by the P1 diagnostic
-        # gate. It is not an ensemble or an independently fit classifier.
-        rows.append(_row(split, setting, "B2_bank", "airm_nearest_class_mean_paired_copy", b2, y_test, bank_seed=seed, n_train=len(train)))
     return rows
+
+
+def _run_task(cache_root: Path, output: Path, split, setting: str) -> str:
+    """Run one independently resumable split/window task in a bounded BLAS pool."""
+
+    run_path = output / "runs" / _run_filename(split, setting)
+    if run_path.exists():
+        return str(run_path)
+    with threadpool_limits(limits=1):
+        data = load_cache(cache_root)
+        if split.ra_mode == "subject_ra":
+            full_cov, _, window_covs, window_logs = load_subject_ra_arrays(data)
+        else:
+            full_cov, window_covs, window_logs = data.full_cov, data.window_cov, data.window_log
+        rows = _run_one(
+            split,
+            setting,
+            (full_cov, window_covs[setting], window_logs[setting]),
+            data.y,
+            data.subject,
+            data.root / "projection_features",
+        )
+        temporary = run_path.with_suffix(".csv.partial")
+        pd.DataFrame(rows).to_csv(temporary, index=False)
+        temporary.replace(run_path)
+    return str(run_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,6 +154,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=ROOT / "outputs" / "bnci2014_001")
     parser.add_argument("--max-splits", type=int, default=None, help="Development/debug only; a partial run always fails completeness gates.")
     parser.add_argument("--protocol", choices=["all", "within_session", "cross_session", "loso"], default="all")
+    parser.add_argument("--jobs", type=int, default=8, help="Parallel split/window workers; each worker uses one BLAS thread.")
     return parser.parse_args()
 
 
@@ -140,13 +174,17 @@ def main() -> Path:
     if cache_validation["status"] != "VALID":
         raise FloatingPointError("Covariance/log cache is numerically invalid; classification cannot proceed.")
 
-    gate0_rows: list[dict] = []
-    for setting in WINDOWS:
-        gate0_rows.append({**gate0_diagnostics(data.window_log[setting], setting=setting), "subject": "all"})
-        for subject_value in np.unique(data.subject):
-            indices = np.flatnonzero(data.subject == subject_value)
-            gate0_rows.append({**gate0_diagnostics(data.window_log[setting][indices], setting=setting), "subject": int(subject_value)})
-    pd.DataFrame(gate0_rows).to_csv(args.output / "gate0_diagnostics.csv", index=False)
+    gate0_path = args.output / "gate0_diagnostics.csv"
+    if gate0_path.exists():
+        gate0_rows = pd.read_csv(gate0_path).to_dict(orient="records")
+    else:
+        gate0_rows: list[dict] = []
+        for setting in WINDOWS:
+            gate0_rows.append({**gate0_diagnostics(data.window_log[setting], setting=setting), "subject": "all"})
+            for subject_value in np.unique(data.subject):
+                indices = np.flatnonzero(data.subject == subject_value)
+                gate0_rows.append({**gate0_diagnostics(data.window_log[setting][indices], setting=setting), "subject": int(subject_value)})
+        pd.DataFrame(gate0_rows).to_csv(gate0_path, index=False)
 
     ra_metadata = build_subject_ra_cache(data)
     ra_full_cov, _, ra_window_cov, ra_window_log = load_subject_ra_arrays(data)
@@ -172,22 +210,23 @@ def main() -> Path:
     if args.max_splits is not None:
         splits = splits[: args.max_splits]
 
-    for split_index, split in enumerate(splits, start=1):
-        for setting in WINDOWS:
-            run_path = runs_root / f"{split.protocol}_{split.ra_mode}_sub{split.subject}_fold{split.fold_id}_{setting}.csv"
-            if run_path.exists():
-                continue
-            print(f"[{split_index}/{len(splits)}] {split.protocol} {split.ra_mode} subject={split.subject} fold={split.fold_id} {setting}", flush=True)
-            full_cov, window_covs, window_logs = arrays_by_mode[split.ra_mode]
-            rows = _run_one(
-                split,
-                setting,
-                (full_cov, window_covs[setting], window_logs[setting]),
-                data.y,
-                data.subject,
-                projection_root,
+    tasks = [
+        (split, setting)
+        for split in splits
+        for setting in WINDOWS
+        if not (runs_root / _run_filename(split, setting)).exists()
+    ]
+    print(f"classification tasks remaining: {len(tasks)} / {len(splits) * len(WINDOWS)}", flush=True)
+    if args.jobs == 1:
+        for index, (split, setting) in enumerate(tasks, start=1):
+            print(f"[{index}/{len(tasks)}] {split.protocol} {split.ra_mode} subject={split.subject} fold={split.fold_id} {setting}", flush=True)
+            _run_task(args.cache_root, args.output, split, setting)
+    else:
+        with parallel_config(backend="loky", n_jobs=args.jobs, inner_max_num_threads=1):
+            Parallel(verbose=10)(
+                delayed(_run_task)(args.cache_root, args.output, split, setting)
+                for split, setting in tasks
             )
-            pd.DataFrame(rows).to_csv(run_path, index=False)
 
     run_paths = sorted(runs_root.glob("*.csv"))
     if not run_paths:
@@ -198,8 +237,29 @@ def main() -> Path:
         raise AssertionError(f"Missing classification columns: {missing}")
     frame = frame.sort_values(["protocol", "ra_mode", "subject", "fold_id", "window_setting", "method", "bank_seed"], na_position="first")
     frame.to_csv(args.output / "classification_results.csv", index=False)
+    bank_subject = (
+        frame[frame["bank_seed"].notna()]
+        .groupby(["protocol", "ra_mode", "window_setting", "method", "bank_seed", "subject"], as_index=False)[["accuracy", "balanced_accuracy"]]
+        .mean()
+    )
+    bank_summary = (
+        bank_subject.groupby(["protocol", "ra_mode", "window_setting", "method", "bank_seed"], as_index=False)
+        .agg(
+            accuracy_mean=("accuracy", "mean"),
+            balanced_accuracy_mean=("balanced_accuracy", "mean"),
+            balanced_accuracy_median=("balanced_accuracy", "median"),
+            balanced_accuracy_std=("balanced_accuracy", "std"),
+            n_subjects=("subject", "nunique"),
+        )
+    )
+    bank_summary.to_csv(args.output / "bank_summary.csv", index=False)
+    (args.output / "data_metadata.json").write_text(json.dumps(cache_metadata, indent=2, sort_keys=True) + "\n")
     gates = evaluate_all_gates(frame)
     (args.output / "GATES.json").write_text(json.dumps(gates, indent=2, sort_keys=True) + "\n")
+    output_audit = audit_outputs(args.output)
+    (args.output / "OUTPUT_AUDIT.json").write_text(json.dumps(output_audit, indent=2, sort_keys=True) + "\n")
+    if args.max_splits is None and args.protocol == "all" and output_audit["status"] != "PASS":
+        raise AssertionError(f"Full-suite output audit failed: {output_audit}")
 
     inference_total = float(frame["inference_time_seconds"].sum())
     inference_trials = int(frame["n_test_trials"].sum())
@@ -207,7 +267,7 @@ def main() -> Path:
         "covariance_log_cache_time_seconds": float(cache_metadata["covariance_log_cache_time_seconds"]),
         "subject_ra_covariance_log_time_seconds": float(ra_metadata["ra_covariance_log_time_seconds"]),
         "projection_feature_precomputation_time_seconds": float(projection_metadata["projection_feature_precomputation_time_seconds"]),
-        "classifier_or_prototype_fitting_time_seconds": float(frame["classifier_or_prototype_fitting_time_seconds"].sum()),
+        "classifier_or_pooled_measure_fitting_time_seconds": float(frame["classifier_or_pooled_measure_fitting_time_seconds"].sum()),
         "inference_time_seconds": inference_total,
         "amortized_inference_seconds_per_trial": inference_total / max(1, inference_trials),
         "measured_inference_trial_evaluations": inference_trials,

@@ -37,6 +37,21 @@ class CacheData:
     trial_id: np.ndarray
 
 
+def print_cache_shape_metadata(metadata: dict) -> None:
+    print(f"raw epoch tensor shape: {tuple(metadata['raw_epoch_shape'])}")
+    print(f"sampling frequency: {metadata['sampling_frequency_hz']:.6f} Hz")
+    print(
+        f"actual epoch duration: {metadata['actual_epoch_duration_seconds']:.6f} s "
+        f"(sample span {metadata['sample_span_seconds']:.6f} s)"
+    )
+    for setting in WINDOWS:
+        window = metadata["windows"][setting]
+        print(
+            f"{setting} exact windows per trial: {window['windows_per_trial']}; "
+            f"total windows: {window['total_windows']}"
+        )
+
+
 def infer_sfreq(dataset, n_times: int) -> float:
     """Infer the preserved MOABB rate from its epoch interval and endpoint grid."""
 
@@ -76,7 +91,10 @@ def build_covariance_log_cache(
     root = Path(cache_root) / dataset_name / ESTIMATOR_NAME
     marker = root / "COMPLETE.json"
     if marker.exists():
-        return json.loads(marker.read_text())
+        metadata = json.loads(marker.read_text())
+        print_cache_shape_metadata(metadata)
+        print(f"covariance/log-cache time: {metadata['covariance_log_cache_time_seconds']:.3f} s (cached)")
+        return metadata
     if root.exists() and any(root.iterdir()):
         raise RuntimeError(f"Incomplete cache exists at {root}; move it aside before retrying.")
     root.mkdir(parents=True, exist_ok=True)
@@ -97,10 +115,6 @@ def build_covariance_log_cache(
     subject, session, session_raw = _metadata_arrays(frame, n_trials, all_subjects)
     trial_id = np.arange(n_trials, dtype=np.int64)
 
-    print(f"raw epoch tensor shape: {tuple(epochs.shape)}")
-    print(f"sampling frequency: {sfreq:.6f} Hz")
-    print(f"actual epoch duration: {actual_duration:.6f} s (sample span {sample_span:.6f} s)")
-
     full_cov = np.lib.format.open_memmap(root / "full_cov.npy", mode="w+", dtype=np.float64, shape=(n_trials, d, d))
     full_log = np.lib.format.open_memmap(root / "full_log.npy", mode="w+", dtype=np.float64, shape=(n_trials, d, d))
 
@@ -110,7 +124,6 @@ def build_covariance_log_cache(
         starts = window_starts(n_times, sfreq, spec["window_seconds"], spec["hop_seconds"])
         window_samples = int(round(spec["window_seconds"] * sfreq))
         count = int(len(starts))
-        print(f"{setting} exact windows per trial: {count}; total windows: {n_trials * count}")
         cov = np.lib.format.open_memmap(root / f"{setting}_cov.npy", mode="w+", dtype=np.float64, shape=(n_trials, count, d, d))
         log = np.lib.format.open_memmap(root / f"{setting}_log.npy", mode="w+", dtype=np.float64, shape=(n_trials, count, d, d))
         window_arrays[setting] = (cov, log, starts, window_samples)
@@ -166,6 +179,7 @@ def build_covariance_log_cache(
     }
     (root / "metadata.json").write_text(json.dumps(cache_metadata, indent=2, sort_keys=True) + "\n")
     marker.write_text(json.dumps(cache_metadata, indent=2, sort_keys=True) + "\n")
+    print_cache_shape_metadata(cache_metadata)
     print(f"covariance/log-cache time: {elapsed:.3f} s")
     del epochs
     return cache_metadata
@@ -200,4 +214,3 @@ def validate_cache(data: CacheData) -> dict:
         min_eigenvalue = min(min_eigenvalue, float(np.min(np.linalg.eigvalsh(value))))
     valid = finite and min_eigenvalue > 0.0
     return {"status": "VALID" if valid else "INVALID", "finite": finite, "minimum_eigenvalue": min_eigenvalue}
-

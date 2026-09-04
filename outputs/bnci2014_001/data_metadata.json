@@ -1,0 +1,90 @@
+{
+  "actual_epoch_duration_seconds": 4.004,
+  "class_names": [
+    "feet",
+    "left_hand",
+    "right_hand",
+    "tongue"
+  ],
+  "covariance_estimator": "oas_trace_eps1e-6",
+  "covariance_log_cache_time_seconds": 41.31843593902886,
+  "dataset": "BNCI2014_001",
+  "dataset_interval": [
+    2.0,
+    6.0
+  ],
+  "epsilon": 1e-06,
+  "estimator_steps": [
+    "OAS",
+    "divide_by_trace",
+    "add_1e-6_I",
+    "symmetrize"
+  ],
+  "moabb_factory": "experiments.slma_data._import_moabb_dataset",
+  "n_classes": 4,
+  "raw_epoch_shape": [
+    5184,
+    22,
+    1001
+  ],
+  "raw_epochs_discarded_after_cache": true,
+  "sample_span_seconds": 4.0,
+  "sampling_frequency_hz": 250.0,
+  "sessions_per_subject": {
+    "1": 2,
+    "2": 2,
+    "3": 2,
+    "4": 2,
+    "5": 2,
+    "6": 2,
+    "7": 2,
+    "8": 2,
+    "9": 2
+  },
+  "subjects": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "windows": {
+    "W1": {
+      "hop_samples": 125,
+      "hop_seconds": 0.5,
+      "primary": true,
+      "starts": [
+        0,
+        125,
+        250,
+        375,
+        500,
+        625,
+        750
+      ],
+      "total_windows": 36288,
+      "window_samples": 250,
+      "window_seconds": 1.0,
+      "windows_per_trial": 7
+    },
+    "W2": {
+      "hop_samples": 250,
+      "hop_seconds": 1.0,
+      "primary": false,
+      "starts": [
+        0,
+        250,
+        500,
+        750
+      ],
+      "total_windows": 20736,
+      "window_samples": 250,
+      "window_seconds": 1.0,
+      "windows_per_trial": 4
+    }
+  }
+}

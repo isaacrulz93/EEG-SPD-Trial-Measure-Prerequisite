@@ -1,0 +1,65 @@
+{
+  "bank_audit": {
+    "0": {
+      "frobenius_norm_max": 1.0000000000000002,
+      "frobenius_norm_min": 0.9999999999999998,
+      "sha256": "953fbede052faad8bd7073ddc0e4215f6b8b0471c7ac1dd02bd1fcbbc294b756",
+      "shape": [
+        200,
+        22,
+        22
+      ]
+    },
+    "1": {
+      "frobenius_norm_max": 1.0,
+      "frobenius_norm_min": 0.9999999999999998,
+      "sha256": "1030f00acf682cbf221c4dcc4dc5a0806e3660063801598563b32b1efa17fce4",
+      "shape": [
+        200,
+        22,
+        22
+      ]
+    },
+    "2": {
+      "frobenius_norm_max": 1.0000000000000002,
+      "frobenius_norm_min": 0.9999999999999998,
+      "sha256": "c82be2733f2e398a2adda0eeaec21b9d785fc5cee62a5797a16ac46bf23d74bd",
+      "shape": [
+        200,
+        22,
+        22
+      ]
+    },
+    "3": {
+      "frobenius_norm_max": 1.0000000000000002,
+      "frobenius_norm_min": 0.9999999999999997,
+      "sha256": "1fe18ed12e28077052b28b4b913f7f157dbd35b76c1ba8007a8e10faa69cf51b",
+      "shape": [
+        200,
+        22,
+        22
+      ]
+    },
+    "4": {
+      "frobenius_norm_max": 1.0000000000000002,
+      "frobenius_norm_min": 0.9999999999999997,
+      "sha256": "a3073efb0d8fe5d1d04c7401bb74e6ef59d72928b77af46af49b337f5bde1fa9",
+      "shape": [
+        200,
+        22,
+        22
+      ]
+    }
+  },
+  "bank_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "fixed_across_all_folds_and_inference": true,
+  "n_directions": 200,
+  "projection_feature_precomputation_time_seconds": 10.273243526928127,
+  "stored_projection_dtype": "float32"
+}

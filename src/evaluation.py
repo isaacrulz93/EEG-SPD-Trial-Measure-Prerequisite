@@ -150,7 +150,7 @@ def metrics(y_true: np.ndarray, prediction: Prediction) -> dict:
     return {
         "accuracy": float(accuracy_score(y_true, prediction.y_pred)),
         "balanced_accuracy": float(balanced_accuracy_score(y_true, prediction.y_pred)),
-        "classifier_or_prototype_fitting_time_seconds": float(prediction.fit_seconds),
+        "classifier_or_pooled_measure_fitting_time_seconds": float(prediction.fit_seconds),
         "inference_time_seconds": float(prediction.inference_seconds),
         "amortized_inference_seconds_per_trial": float(prediction.inference_seconds / max(1, len(y_true))),
     }
@@ -158,4 +158,3 @@ def metrics(y_true: np.ndarray, prediction: Prediction) -> dict:
 
 def feature_methods(projections: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return moment_features(projections), sorted_projection_features(projections)
-

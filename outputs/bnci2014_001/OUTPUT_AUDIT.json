@@ -1,0 +1,37 @@
+{
+  "checks": {
+    "bank_methods_always_seeded": true,
+    "bank_seeds_exact_0_to_4": true,
+    "bank_summary_written": true,
+    "classification_identity_unique": true,
+    "classification_rows_5166": true,
+    "data_metadata_written": true,
+    "mandatory_columns_present": true,
+    "nine_subjects": true,
+    "no_ensemble_rows": true,
+    "no_partial_run_files": true,
+    "nonbank_methods_never_seeded": true,
+    "run_csv_files_252": true,
+    "subject_ra_only_loso": true,
+    "w1_rows_2520": true,
+    "w2_rows_2646": true,
+    "within_session_has_five_folds_each": true
+  },
+  "observed": {
+    "bank_method_missing_seed_rows": 0,
+    "bank_seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "classification_rows": 5166,
+    "duplicate_identity_rows": 0,
+    "missing_columns": [],
+    "nonbank_method_seeded_rows": 0,
+    "partial_run_files": 0,
+    "run_csv_files": 252
+  },
+  "status": "PASS"
+}

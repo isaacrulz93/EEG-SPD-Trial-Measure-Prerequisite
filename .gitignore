@@ -8,6 +8,4 @@ __pycache__/
 # Large reproducible artifacts.
 cache/**
 !cache/.gitkeep
-outputs/**
-!outputs/.gitkeep
-
+outputs/**/runs_invalid_*/

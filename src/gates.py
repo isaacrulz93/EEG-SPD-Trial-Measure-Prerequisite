@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import pandas as pd
 
@@ -57,6 +55,40 @@ def _bank_comparison(rows: pd.DataFrame, candidate: str, control: str) -> dict:
     }
 
 
+def _bank_vs_independent_comparison(rows: pd.DataFrame, candidate: str, control: str) -> dict:
+    candidate_rows = rows[(rows["method"] == candidate) & rows["bank_seed"].notna()].copy()
+    control_rows = rows[rows["method"] == control].copy()
+    if candidate_rows.empty or control_rows.empty:
+        return {"status": "NOT_RUN", "pass": False}
+    candidate_rows["bank_seed"] = candidate_rows["bank_seed"].astype(int)
+    candidate_agg = candidate_rows.groupby(["subject", "bank_seed"])["balanced_accuracy"].mean().reset_index()
+    control_agg = control_rows.groupby("subject")["balanced_accuracy"].mean().rename("control").reset_index()
+    merged = candidate_agg.merge(control_agg, on="subject", how="inner")
+    merged["delta"] = merged["balanced_accuracy"] - merged["control"]
+    bank_delta = merged.groupby("bank_seed")["delta"].mean().sort_index()
+    subject_delta = merged.groupby("subject")["delta"].median().sort_index()
+    median_bank_mean_delta = float(bank_delta.median())
+    wins = int((subject_delta > 0.0).sum())
+    positive_banks = int((bank_delta > 0.0).sum())
+    complete = len(subject_delta) == EXPECTED_SUBJECTS and len(bank_delta) == EXPECTED_BANKS
+    passed = complete and median_bank_mean_delta >= 0.010 and wins >= 6 and positive_banks >= 4
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "pass": bool(passed),
+        "complete_nine_subject_five_bank_suite": bool(complete),
+        "median_across_banks_mean_subject_delta": median_bank_mean_delta,
+        "subject_wins": wins,
+        "required_subject_wins": 6,
+        "positive_mean_delta_banks": positive_banks,
+        "required_positive_banks": 4,
+        "n_subjects": int(len(subject_delta)),
+        "n_banks": int(len(bank_delta)),
+        "bank_mean_deltas": {str(int(key)): float(value) for key, value in bank_delta.items()},
+        "subject_median_deltas": {str(int(key)): float(value) for key, value in subject_delta.items()},
+        "delta_threshold": 0.010,
+    }
+
+
 def _candidate_vs_bank_independent(rows: pd.DataFrame, candidate: str, control: str) -> dict:
     candidate_rows = rows[(rows["method"] == candidate) & rows["bank_seed"].notna()].copy()
     control_rows = rows[rows["method"] == control].copy()
@@ -77,9 +109,7 @@ def _candidate_vs_bank_independent(rows: pd.DataFrame, candidate: str, control: 
 def evaluate_stage(frame: pd.DataFrame, *, name: str, protocol: str, ra_mode: str) -> dict:
     rows = _stage_rows(frame, protocol, ra_mode)
     p2 = _bank_comparison(rows, "P2", "B5")
-    p1 = _bank_comparison(rows, "P1", "B2_bank")
-    # P1 uses a bank-independent B2 calculation copied to each bank as B2_bank
-    # solely for paired diagnostics; no prediction ensemble is formed.
+    p1 = _bank_vs_independent_comparison(rows, "P1", "B2")
     extra = None
     threshold = None
     if name == "Gate 1B":
@@ -132,4 +162,3 @@ def evaluate_all_gates(frame: pd.DataFrame) -> dict:
         "w2_can_change_gate": False,
         "approximately_equal_tolerance": 0.010,
     }
-

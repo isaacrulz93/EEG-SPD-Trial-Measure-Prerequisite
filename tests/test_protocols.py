@@ -1,6 +1,7 @@
 import numpy as np
 
 from src.protocols import assert_trial_disjoint, balanced_source_indices, make_splits
+from run_experiment import _run_filename
 
 
 def _fixture():
@@ -25,6 +26,8 @@ def test_all_splits_are_at_trial_level_and_both_session_directions_exist():
     assert sum(value.protocol == "loso" and value.ra_mode == "subject_ra" for value in splits) == 9
     for split in splits:
         assert_trial_disjoint(split, trial)
+    names = [_run_filename(split, setting) for split in splits for setting in ("W1", "W2")]
+    assert len(names) == len(set(names)) == 252
 
 
 def test_source_balancing_is_deterministic_across_subject_and_class():
@@ -35,4 +38,3 @@ def test_source_balancing_is_deterministic_across_subject_and_class():
     np.testing.assert_array_equal(selected, balanced_source_indices(indices, y, subject))
     counts = {(s, c): int(np.sum((subject[selected] == s) & (y[selected] == c))) for s in [1, 2] for c in [0, 1]}
     assert set(counts.values()) == {2}
-

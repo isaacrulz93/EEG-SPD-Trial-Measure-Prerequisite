@@ -1,0 +1,11 @@
+{
+  "moabb": "1.2.0",
+  "numpy": "1.26.4",
+  "platform": "Linux-6.8.0-87-generic-x86_64-with-glibc2.35",
+  "pyriemann": "0.7",
+  "python": "3.9.25 (main, Nov  3 2025, 22:33:05) \n[GCC 11.2.0]",
+  "sklearn": "1.5.2",
+  "upstream_blob": "010e445af8fcdf65f8719e465ff2ed2e3672e3ea",
+  "upstream_commit": "7d0b8b1757c8284a6e9a641487d3cf6106073dc5",
+  "upstream_repository": "isaacrulz93/T3DA"
+}
