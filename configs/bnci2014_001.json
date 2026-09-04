@@ -1,0 +1,16 @@
+{
+  "dataset": "BNCI2014_001",
+  "subjects": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  "covariance_estimator": "oas_trace_eps1e-6",
+  "epsilon": 1e-6,
+  "windows": {
+    "W1": {"window_seconds": 1.0, "hop_seconds": 0.5, "primary": true},
+    "W2": {"window_seconds": 1.0, "hop_seconds": 1.0, "primary": false}
+  },
+  "n_directions": 200,
+  "bank_seeds": [0, 1, 2, 3, 4],
+  "within_session_folds": 5,
+  "split_seed": 20260904,
+  "source_file": "experiments/slma_data.py",
+  "source_commit": "7d0b8b1757c8284a6e9a641487d3cf6106073dc5"
+}

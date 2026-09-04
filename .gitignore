@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.idea/
+.vscode/
+
+# Large reproducible artifacts.
+cache/**
+!cache/.gitkeep
+outputs/**
+!outputs/.gitkeep
+
